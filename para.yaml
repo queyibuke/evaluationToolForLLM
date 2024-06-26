@@ -1,0 +1,20 @@
+seqLen: 2048
+modelSize: 72B
+attnHeadNum: 12
+globalBatchSize: 256
+#miniBatchSize: 16
+step: 10
+gpuNumber: 16
+hiddenLayerDimension: 768
+layer: 12
+
+optimizerStrategy: 0
+dataParaSize: 1
+tensorParaSize: 1
+pipelineParaSize: 1
+sequenceParaSize: 1
+
+
+dataNum: 5B #
+fPointOp: 19.5 #TFLOPS
+MFU: 0.5 #

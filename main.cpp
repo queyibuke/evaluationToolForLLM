@@ -4,7 +4,13 @@
 #include<cmath>
 #include<iomanip>
 #include<vector>
+#include<fstream>
+#if WIN32
+    #define YAML_CPP_STATIC_DEFINE
+#endif
+#include"yaml-cpp/yaml.h"
 
+std::string fileName = {};
 std::vector<std::string> option{"1 estimate memory usage", "2 estimate traintime", "3 training parameter optimization"};
 int opt = 0;
 
@@ -28,55 +34,66 @@ int sequenceParaSize = 0;//序列并行大小
 std::string dataNum = {};
 float dataNumFloat = 0;
 float fPointOp = 0.0;
-std::string MFU = {};
-float MFUfloat = 0.0;
+float MFU = 0.0;
 
 uint64_t memUsage = 0;
 uint64_t optimizerMem = 0;
 uint64_t activationMem = 0;
 float trainTime = 0.0;
 
-/**
- * @brief 输入参数
- *
- * 从标准输入读取一系列参数，包括序列长度、模型大小、注意力头数、全局批处理大小、微批处理大小、步长、GPU数量、隐藏层维度、层数、优化器策略、数据并行大小、张量并行大小、管道并行大小和序列并行大小。
- *
- * @param seqLen 序列长度引用
- * @param modelSize 模型大小引用
- * @param attnHeadNum 注意力头数引用
- * @param globalBatchSize 全局批处理大小引用
- * @param miniBatchSize 微批处理大小引用
- * @param step 步长引用
- * @param gpuNumber GPU数量引用
- * @param hiddenLayerDimension 隐藏层维度引用
- * @param layer 层数引用
- * @param optimizerStrategy 优化器策略引用
- * @param dataParaSize 数据并行大小引用
- * @param tensorParaSize 张量并行大小引用
- * @param pipelineParaSize 管道并行大小引用
- * @param sequenceParaSize 序列并行大小引用
- */
-void inputParaForEvalMem(int& seqLen, std::string& modelSize , int& attnHeadNum, float& globalBatchSize, float& miniBatchSize, int& step, int& gpuNumber, int& hiddenLayerDimension, int& layer,
-    int& optimizerStrategy, int& dataParaSize, int& tensorParaSize, int& pipelineParaSize, int& sequenceParaSize) {
-    std::cout << "please input the following parameters(delimited by Spaces):" << std::endl 
-        << "sequenceLenth modelSize attentionHead globalBatchSize step gpuNumber hiddenLayerDimension layer(like 2048 1.3B 12 256 2 16 768 12):" << std::endl;
-    std::cin >> seqLen >> modelSize >> attnHeadNum >> globalBatchSize >> step >> gpuNumber >> hiddenLayerDimension >> layer;
-    std::cout << "optimizerStrategy dataParaSize tensorParaSize pipelineParaSize sequenceParaSize (if don't use zero 1 2 3, please input 0 for optimizerStrategy)" << std::endl 
-        << "like 1 1 1 1 1:" << std::endl;
-    std::cin >> optimizerStrategy >> dataParaSize >> tensorParaSize >> pipelineParaSize >> sequenceParaSize;
-    while (sequenceParaSize != 0 && (optimizerStrategy == 2 || optimizerStrategy == 3)) {
-        std::cout << "optimizerStrategy is zero2 or zero3 and sequenceParaSize is 0 have to choose one or the orther!" << std::endl
-            << "please confirm para ande reinput optimizerStrategy and sequenceParaSize" << std::endl;
-        std::cin >> optimizerStrategy >> sequenceParaSize;
+void inputFunNum() {
+    std::cout << "follow these tips to complete the model evaluation" << std::endl;
+    for(auto& a : option ) {
+        std::cout << a << std::endl;
     }
+    std::cout << "please enter the function number: ";
+    std::cin >> opt;
+    while(opt <= 0 || opt > option.size()) {
+        std::cout << "the number is not in the range, the input is wrong, please re-enter: " ;
+        std::cin >> opt;
+    }
+    return;
+}
 
-    miniBatchSize = globalBatchSize / (step * gpuNumber);
+/**
+ * @brief 从 YAML 文件中获取参数
+ *
+ * 从名为 "para.yaml" 的 YAML 文件中读取参数，并设置相应的成员变量。
+ * 如果文件无法打开，则抛出运行时错误。
+ */
+void getYamlPara(std::string &fileName) {
+    std::ifstream file(fileName);
+    while(!file.is_open()) {
+        throw std::runtime_error("Unable to open file!");
+        system("pause");
+    }
+    YAML::Node config = YAML::LoadFile(fileName);
 
-    std::cout << "sequenceLenth is " << seqLen << std::endl 
-        << "modelSize is " << modelSize << std::endl
-        << "attentionHead is " << attnHeadNum << std::endl
+    seqLen = config["seqLen"].as<int>();
+    modelSize = config["modelSize"].as<std::string>();
+    modelSizeInt = static_cast<uint64_t>(static_cast<int>(std::stof(modelSize.substr(0, modelSize.size() - 1)) * 1000)) * 1000000;
+    attnHeadNum = config["attnHeadNum"].as<int>();
+    globalBatchSize = config["globalBatchSize"].as<int>();
+    step = config["step"].as<int>();
+    gpuNumber = config["gpuNumber"].as<int>();
+    hiddenLayerDimension = config["hiddenLayerDimension"].as<int>();
+    layer = config["layer"].as<int>();
+    optimizerStrategy = config["optimizerStrategy"].as<int>();
+    dataParaSize = config["dataParaSize"].as<int>();
+    tensorParaSize = config["tensorParaSize"].as<int>();
+    pipelineParaSize = config["pipelineParaSize"].as<int>();
+    sequenceParaSize = config["sequenceParaSize"].as<int>();
+
+    dataNum = config["dataNum"].as<std::string>();
+    dataNumFloat = std::stof(dataNum.substr(0, dataNum.size() - 1));
+    fPointOp = config["fPointOp"].as<float>();
+    MFU = config["MFU"].as<float>();
+
+    std::cout << "the para.yaml para is:" << std::endl;
+    std::cout << "seqLen is " << seqLen << std::endl
+        << "modelSize is " << modelSizeInt << '(' << modelSize << ')' << std::endl
+        << "attnHeadNum is " << attnHeadNum << std::endl
         << "globalBatchSize is " << globalBatchSize << std::endl
-        << "miniBatchSize is " << miniBatchSize << std::endl
         << "step is " << step << std::endl
         << "gpuNumber is " << gpuNumber << std::endl
         << "hiddenLayerDimension is " << hiddenLayerDimension << std::endl
@@ -86,54 +103,15 @@ void inputParaForEvalMem(int& seqLen, std::string& modelSize , int& attnHeadNum,
     } else {
         std::cout << "optimizerStrategy is Zero" << optimizerStrategy << std::endl;
     }
-    std::cout << "dataParaSize is " << dataParaSize << std::endl
+    std::cout<< "dataParaSize is " << dataParaSize << std::endl
         << "tensorParaSize is " << tensorParaSize << std::endl
         << "pipelineParaSize is " << pipelineParaSize << std::endl
-        << "sequenceParaSize is " << sequenceParaSize << std::endl;
-    }
-
-void inputParaForEvalTime(std::string &dataNum, std::string &modelSize, int &gpuNumber, float &fPointOp, std::string &MFU) {
-    std::cout << "please input the following parameters(delimited by Spaces):" << std::endl
-        << "dataNum modelSize gpuNumber fPointOp(TFLOPs) MFU(like 10T 1.3B 256 1000 0.5):" << std::endl;
-    std::cin >> dataNum >> modelSize >> gpuNumber >> fPointOp >> MFU;
-    std::cout << "dataNum is " << dataNum << std::endl
-        << "modelSize is " << modelSize << std::endl
-        << "gpuNumber is " << gpuNumber << std::endl
+        << "sequenceParaSize is " << sequenceParaSize << std::endl
+        << "dataNum is " << dataNumFloat << '(' << dataNum << ')' << std::endl
         << "fPointOp is " << fPointOp << std::endl
         << "MFU is " << MFU << std::endl;
 }
 
-void init() {
-    switch(opt) {
-        case 1:
-            inputParaForEvalMem(seqLen, modelSize, attnHeadNum, globalBatchSize, miniBatchSize, step, gpuNumber, hiddenLayerDimension, layer,
-                optimizerStrategy, dataParaSize, tensorParaSize, pipelineParaSize, sequenceParaSize);
-            break;
-        case 2:
-            inputParaForEvalTime(dataNum, modelSize, gpuNumber, fPointOp, MFU);
-            break;
-        case 3:
-            //todo
-            break;
-        default:
-            break;
-    }
-}
-
-void confirmPara() {
-    std:: cout << "please confirm the para, if the para is wrong, please input 'n', else input '[Y]/y':";
-    char confirm;
-    std::cin >> confirm;
-    while(confirm != 'Y' && confirm != 'y' && confirm != 'N' && confirm != 'n') {
-        std::cout << "the confirm para is wrong, please reinput the confirm para:" << std::endl;
-        std::cin >> confirm;
-    }
-    if(confirm == 'N' || confirm == 'n') {
-        std::cout << "please reinput the para:" << std::endl;
-        init();
-        confirmPara();
-    }
-}
 /**
  * @brief 计算优化器所需的内存大小
  *
@@ -238,50 +216,40 @@ float getTrainingTime(const float f_dataNum, const uint64_t f_modelSize, const i
 }
 
 int main(char **argv, int argc) {
-    system("chcp 936");
-    std::cout << "follow these tips to complete the model evaluation" << std::endl;
-    for(auto& a : option ) {
-        std::cout << a << std::endl;
+    if(argc != 2) {
+        std::cout << "please input the yaml file name: ";
+        std::cin >> fileName;
+    } else {
+        fileName = argv[1];
     }
-    std::cout << "please enter the function number: ";
-    std::cin >> opt;
-    while(opt <= 0 || opt > option.size()) {
-        std::cout << "the number is not in the range, the input is wrong, please re-enter: " ;
-        std::cin >> opt;
-    }
-    init();
-    confirmPara();
-    switch (opt) {
-    case 1:
-        modelSizeInt = static_cast<uint64_t>(static_cast<int>(std::stof(modelSize.substr(0, modelSize.size() - 1)) * 1000)) * 1000000;
-        std::cout << "modelSize is " << modelSizeInt << '(' << modelSize << ')' << std::endl;
-        optimizerMem = getOptimizerMem(optimizerStrategy, modelSizeInt, gpuNumber);
-        activationMem = getActivationMem(seqLen, attnHeadNum, globalBatchSize, miniBatchSize, step, gpuNumber, hiddenLayerDimension, layer, dataParaSize, tensorParaSize, pipelineParaSize, sequenceParaSize);
-        memUsage = optimizerMem + activationMem;
-        std::cout << "memUsage is " << memUsage << "B(" << memUsage / 1000000000 << "GB) " << std::endl;
-        break;
-    case 2:
-        dataNumFloat = std::stof(dataNum.substr(0, dataNum.size() - 1));
-        modelSizeInt = static_cast<uint64_t>(static_cast<int>(std::stof(modelSize.substr(0, modelSize.size() - 1)) * 1000)) * 1000000;
-        std::cout << "modelSize is " << modelSizeInt << '(' << modelSize << ')' << std::endl;
-        if(MFU[MFU.size() - 1] == '%') {
-            MFUfloat = std::stof(MFU.substr(0, MFU.size() - 1)) / 100;
-        } else {
-            MFUfloat = std::stof(MFU);
+    getYamlPara(fileName);
+    inputFunNum();
+    while(1) {
+        switch (opt) {
+        case 1:
+            optimizerMem = getOptimizerMem(optimizerStrategy, modelSizeInt, gpuNumber);
+            activationMem = getActivationMem(seqLen, attnHeadNum, globalBatchSize, miniBatchSize, step, gpuNumber, hiddenLayerDimension, layer, dataParaSize, tensorParaSize, pipelineParaSize, sequenceParaSize);
+            memUsage = optimizerMem + activationMem;
+            std::cout << "memUsage is " << memUsage << "B(" << memUsage / 1000000000 << "GB) " << std::endl;
+            break;
+        case 2:
+            trainTime = getTrainingTime(dataNumFloat, modelSizeInt, gpuNumber, fPointOp, MFU);
+            std::cout << "trainTime is " << std::fixed << std::setprecision(1) << trainTime  << std::endl;
+            break;
+        case 3:
+            /* code */
+            break;
+        default:
+            break;
         }
-        trainTime = getTrainingTime(dataNumFloat, modelSizeInt, gpuNumber, fPointOp, MFUfloat);
-        std::cout << "trainTime is " << std::fixed << std::setprecision(1) << trainTime  << std::endl;
-        break;
-    case 3:
-        /* code */
-        break;
-    default:
-        break;
+        std::cout << "if you want to exit, please input 'q'. or you want to continue, please input other: ";
+        char c = getchar();
+        if(c = getchar() == 'q') {
+            break;
+        } else {
+            inputFunNum();
+        }       
     }
-    
-    std::cout << "if you want to exit, please input 'q'. or close the win!" << std::endl;
-    char c = getchar();
-    while (c = getchar() != 'q');
     system("pause");
     return 0;    
 }
